@@ -1,28 +1,11 @@
 import { Boom } from '@hapi/boom'
+import { Logger } from 'pino'
 import { proto } from '../../WAProto'
 import { SignalRepository, WAMessageKey } from '../Types'
-import { areJidsSameUser, BinaryNode, getBinaryNodeChild, isJidBroadcast, isJidGroup, isJidMetaIa, isJidNewsletter, isJidStatusBroadcast, isJidUser, isLidUser } from '../WABinary'
-import { BufferJSON, unpadRandomMax16 } from './generics'
-import { ILogger } from './logger'
+import { areJidsSameUser, BinaryNode, isJidBroadcast, isJidGroup, isJidNewsletter, isJidStatusBroadcast, isJidUser, isLidUser } from '../WABinary'
+import { unpadRandomMax16 } from './generics'
 
 export const NO_MESSAGE_FOUND_ERROR_TEXT = 'Message absent from node'
-export const MISSING_KEYS_ERROR_TEXT = 'Key used already or never filled'
-
-export const NACK_REASONS = {
-	ParsingError: 487,
-	UnrecognizedStanza: 488,
-	UnrecognizedStanzaClass: 489,
-	UnrecognizedStanzaType: 490,
-	InvalidProtobuf: 491,
-	InvalidHostedCompanionStanza: 493,
-	MissingMessageSecret: 495,
-	SignalErrorOldCounter: 496,
-	MessageDeletedOnPeer: 499,
-	UnhandledError: 500,
-	UnsupportedAdminRevoke: 550,
-	UnsupportedLIDGroup: 551,
-	DBOperationFailed: 552
-}
 
 type MessageType = 'chat' | 'peer_broadcast' | 'other_broadcast' | 'group' | 'direct_peer_status' | 'other_status' | 'newsletter'
 
@@ -47,9 +30,22 @@ export function decodeMessageNode(
 	const isMe = (jid: string) => areJidsSameUser(jid, meId)
 	const isMeLid = (jid: string) => areJidsSameUser(jid, meLid)
 
-	if(isJidUser(from) || isLidUser(from)) {
-		if(recipient && !isJidMetaIa(recipient)) {
-			if(!isMe(from) && !isMeLid(from)) {
+	if(isJidUser(from)) {
+		if(recipient) {
+			if(!isMe(from)) {
+				throw new Boom('receipient present, but msg not from me', { data: stanza })
+			}
+
+			chatId = recipient
+		} else {
+			chatId = from
+		}
+
+		msgType = 'chat'
+		author = from
+	} else if(isLidUser(from)) {
+		if(recipient) {
+			if(!isMeLid(from)) {
 				throw new Boom('receipient present, but msg not from me', { data: stanza })
 			}
 
@@ -68,10 +64,6 @@ export function decodeMessageNode(
 		msgType = 'group'
 		author = participant
 		chatId = from
-	} else if(isJidNewsletter(from)){
-		msgType = 'newsletter'
-		author = from
-		chatId = from
 	} else if(isJidBroadcast(from)) {
 		if(!participant) {
 			throw new Boom('No participant in group message')
@@ -83,25 +75,25 @@ export function decodeMessageNode(
 		} else {
 			msgType = isParticipantMe ? 'peer_broadcast' : 'other_broadcast'
 		}
+
 		chatId = from
 		author = participant
-		} else if(isJidNewsletter(from)){
+	} else if(isJidNewsletter(from)) {
 		msgType = 'newsletter'
-		author = from
 		chatId = from
+		author = from
 	} else {
 		throw new Boom('Unknown message type', { data: stanza })
 	}
 
-	const fromMe = isJidNewsletter(from) ? !!stanza.attrs?.is_sender || false : (isLidUser(from) ? isMeLid : isMe)(stanza.attrs.participant || stanza.attrs.from)
+	const fromMe = (isLidUser(from) ? isMeLid : isMe)(stanza.attrs.participant || stanza.attrs.from)
 	const pushname = stanza?.attrs?.notify
 
 	const key: WAMessageKey = {
 		remoteJid: chatId,
 		fromMe,
 		id: msgId,
-		participant,
-		server_id: stanza.attrs?.server_id
+		participant
 	}
 
 	const fullMessage: proto.IWebMessageInfo = {
@@ -109,10 +101,6 @@ export function decodeMessageNode(
 		messageTimestamp: +stanza.attrs.t,
 		pushName: pushname,
 		broadcast: isJidBroadcast(from)
-	}
-	
-	if (msgType === 'newsletter') {
-		fullMessage.newsletterServerId = +stanza.attrs?.server_id
 	}
 
 	if(key.fromMe) {
@@ -131,7 +119,7 @@ export const decryptMessageNode = (
 	meId: string,
 	meLid: string,
 	repository: SignalRepository,
-	logger: ILogger
+	logger: Logger
 ) => {
 	const { fullMessage, author, sender } = decodeMessageNode(stanza, meId, meLid)
 	return {
@@ -140,32 +128,11 @@ export const decryptMessageNode = (
 		author,
 		async decrypt() {
 			let decryptables = 0
-			async function processSenderKeyDistribution(msg: proto.IMessage) {
-				if(msg.senderKeyDistributionMessage) {
-					try {
-						await repository.processSenderKeyDistributionMessage({
-							authorJid: author,
-							item: msg.senderKeyDistributionMessage
-						})
-					} catch(err) {
-						logger.error({ key: fullMessage.key, err }, 'failed to process senderKeyDistribution')
-					}
-				}
-			}
-
-			if (isJidNewsletter(fullMessage.key.remoteJid!)) {
-				const node = getBinaryNodeChild(stanza, 'plaintext')
-				const msg = proto.Message.decode(node?.content as Uint8Array)
-
-				await processSenderKeyDistribution(msg)
-
-				fullMessage.message = msg
-				decryptables += 1
-			} else if(Array.isArray(stanza.content)) {
+			if(Array.isArray(stanza.content)) {
 				for(const { tag, attrs, content } of stanza.content) {
 					if(tag === 'verified_name' && content instanceof Uint8Array) {
 						const cert = proto.VerifiedNameCertificate.decode(content)
-						const details = proto.VerifiedNameCertificate.Details.decode(cert.details!)
+						const details = proto.VerifiedNameCertificate.Details.decode(cert.details)
 						fullMessage.verifiedBizName = details.verifiedName
 					}
 

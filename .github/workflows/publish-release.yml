@@ -3,7 +3,7 @@ name: Publish Release
 on:
   push:
     tags:
-      - "y*"
+      - "v*"
 
 permissions: write-all
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -20,7 +20,7 @@ jobs:
         run: git fetch --tags -f || true
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3.6.0
         with:
           node-version: 20.x
           registry-url: "https://registry.npmjs.org"
@@ -31,7 +31,7 @@ jobs:
         id: yarn-cache-dir-path
         run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v3
         id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -44,16 +44,16 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish in NPM (as `@queenanya/baileys`)
+      - name: Publish in NPM (as `baileys`)
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
-      - name: Publish in NPM (teamolduser scope)
+      - name: Publish in NPM (whiskeysockets scope)
         run: |
-          npx json -I -f package.json -e "this.name='@teamolduser/baileys'"
+          npx json -I -f package.json -e "this.name='@whiskeysockets/baileys'"
           npm publish --access public --//registry.npmjs.org/:_authToken=$NPM_TOKEN
-          npx json -I -f package.json -e "this.name='@queenanya/baileys'"
+          npx json -I -f package.json -e "this.name='baileys'"
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 

@@ -28,6 +28,7 @@ import {
 	getPlatformId,
 	makeEventBuffer,
 	makeNoiseHandler,
+	printQRIfNecessaryListener,
 	promiseTimeout,
 } from '../Utils'
 import {
@@ -63,10 +64,6 @@ export const makeSocket = (config: SocketConfig) => {
 		qrTimeout,
 		makeSignalRepository,
 	} = config
-
-	if(printQRInTerminal) {
-		console.warn('⚠️ The printQRInTerminal option has been deprecated. You will no longer receive QR codes in the terminal automatically. Please listen to the connection.update event yourself and handle the QR your way. You can remove this message by removing this opttion. This message will be removed in a future version.')
-	}
 
 	const url = typeof waWebSocketUrl === 'string' ? new URL(waWebSocketUrl) : waWebSocketUrl
 
@@ -135,8 +132,7 @@ export const makeSocket = (config: SocketConfig) => {
 			logger.trace({ xml: binaryNodeToString(frame), msg: 'xml send' })
 		}
 
-		const node = encodeBinaryNode(frame)
-		const buff = Buffer.from(node)
+		const buff = encodeBinaryNode(frame)
 		return sendRawMessage(buff)
 	}
 
@@ -188,7 +184,7 @@ export const makeSocket = (config: SocketConfig) => {
 		let onRecv: (json) => void
 		let onErr: (err) => void
 		try {
-			const result = await promiseTimeout<T>(timeoutMs,
+			return await promiseTimeout<T>(timeoutMs,
 				(resolve, reject) => {
 					onRecv = resolve
 					onErr = err => {
@@ -200,8 +196,6 @@ export const makeSocket = (config: SocketConfig) => {
 					ws.off('error', onErr)
 				},
 			)
-
-			return result as any
 		} finally {
 			ws.off(`TAG:${msgId}`, onRecv!)
 			ws.off('close', onErr!) // if the socket closes, you'll never receive the message
@@ -216,12 +210,11 @@ export const makeSocket = (config: SocketConfig) => {
 		}
 
 		const msgId = node.attrs.id
+		const wait = waitForMessage(msgId, timeoutMs)
 
-		const [result] = await Promise.all([
-			waitForMessage(msgId, timeoutMs),
-			sendNode(node)
-		])
+		await sendNode(node)
 
+		const result = await (wait as Promise<BinaryNode>)
 		if('tag' in result) {
 			assertNodeErrorFree(result)
 		}
@@ -245,7 +238,7 @@ export const makeSocket = (config: SocketConfig) => {
 
 		logger.trace({ handshake }, 'handshake recv from WA')
 
-		const keyEnc = await noise.processHandshake(handshake, creds.noiseKey)
+		const keyEnc = noise.processHandshake(handshake, creds.noiseKey)
 
 		let node: proto.IClientPayload
 		if(!creds.me) {
@@ -387,29 +380,29 @@ export const makeSocket = (config: SocketConfig) => {
 	}
 
 	const waitForSocketOpen = async() => {
-		if (ws.isOpen) {
-			return;
+		if(ws.isOpen) {
+			return
 		}
 
-		if (ws.isClosed || ws.isClosing) {
-			throw new Boom('Connection Closed', { statusCode: DisconnectReason.connectionClosed });
+		if(ws.isClosed || ws.isClosing) {
+			throw new Boom('Connection Closed', { statusCode: DisconnectReason.connectionClosed })
 		}
 
-		let onOpen;
-		let onClose;
+		let onOpen: () => void
+		let onClose: (err: Error) => void
 		await new Promise((resolve, reject) => {
-			onOpen = () => resolve(undefined);
-			onClose = mapWebSocketError(reject);
-			ws.on('open', onOpen);
-			ws.on('close', onClose);
-			ws.on('error', onClose);
+			onOpen = () => resolve(undefined)
+			onClose = mapWebSocketError(reject)
+			ws.on('open', onOpen)
+			ws.on('close', onClose)
+			ws.on('error', onClose)
 		})
 			.finally(() => {
-			ws.off('open', onOpen);
-			ws.off('close', onClose);
-			ws.off('error', onClose);
-		});
-	};
+				ws.off('open', onOpen)
+				ws.off('close', onClose)
+				ws.off('error', onClose)
+			})
+	}
 
 	const startKeepAliveRequest = () => (
 		keepAliveReq = setInterval(() => {
@@ -488,15 +481,13 @@ export const makeSocket = (config: SocketConfig) => {
 		end(new Boom(msg || 'Intentional Logout', { statusCode: DisconnectReason.loggedOut }))
 	}
 
-	const requestPairingCode = async (phoneNumber: string): Promise<string> => {
-		await waitForSocketOpen();
-		authState.creds.pairingCode = bytesToCrockford(randomBytes(5));
+	const requestPairingCode = async(phoneNumber: string): Promise<string> => {
+		authState.creds.pairingCode = bytesToCrockford(randomBytes(5))
 		authState.creds.me = {
 			id: jidEncode(phoneNumber, 's.whatsapp.net'),
 			name: '~'
-		};
-		ev.emit('creds.update', authState.creds);
-
+		}
+		ev.emit('creds.update', authState.creds)
 		await sendNode({
 			tag: 'iq',
 			attrs: {
@@ -543,9 +534,9 @@ export const makeSocket = (config: SocketConfig) => {
 					]
 				}
 			]
-		});
-		return authState.creds.pairingCode;
-	};
+		})
+		return authState.creds.pairingCode
+	}
 
 	async function generatePairingKey() {
 		const salt = randomBytes(32)
@@ -679,15 +670,6 @@ export const makeSocket = (config: SocketConfig) => {
 		end(new Boom('Multi-device beta not joined', { statusCode: DisconnectReason.multideviceMismatch }))
 	})
 
-	ws.on('CB:ib,,offline_preview', (node: BinaryNode) => {
-	  logger.info('offline preview received', JSON.stringify(node))
-		sendNode({
-			tag: 'ib',
-			attrs: {},
-			content: [{ tag: 'offline_batch', attrs: { count: '100' } }]
-		})
-	})
-
 	ws.on('CB:ib,,edge_routing', (node: BinaryNode) => {
 		const edgeRoutingNode = getBinaryNodeChild(node, 'edge_routing')
 		const routingInfo = getBinaryNodeChild(edgeRoutingNode, 'routing_info')
@@ -741,6 +723,9 @@ export const makeSocket = (config: SocketConfig) => {
 		Object.assign(creds, update)
 	})
 
+	if(printQRInTerminal) {
+		printQRIfNecessaryListener(ev, logger)
+	}
 
 	return {
 		type: 'md' as 'md',
@@ -783,3 +768,5 @@ function mapWebSocketError(handler: (err: Error) => void) {
 		)
 	}
 }
+
+export type Socket = ReturnType<typeof makeSocket>

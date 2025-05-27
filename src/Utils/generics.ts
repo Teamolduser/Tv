@@ -2,12 +2,11 @@ import { Boom } from '@hapi/boom'
 import axios, { AxiosRequestConfig } from 'axios'
 import { createHash, randomBytes } from 'crypto'
 import { platform, release } from 'os'
+import { Logger } from 'pino'
 import { proto } from '../../WAProto'
 import { version as baileysVersion } from '../Defaults/baileys-version.json'
 import { BaileysEventEmitter, BaileysEventMap, BrowsersMap, ConnectionState, DisconnectReason, WACallUpdateType, WAVersion } from '../Types'
 import { BinaryNode, getAllBinaryNodeChildren, jidDecode } from '../WABinary'
-
-/** Added Extra Browsers or Platforms*/
 
 const PLATFORM_MAP = {
 	'aix': 'AIX',
@@ -19,30 +18,18 @@ const PLATFORM_MAP = {
 	'sunos': 'Solaris'
 }
 
-/**
-const COMPANION_PLATFORM_MAP = {
-	'Chrome': '49',
-	'Edge': '50',
-	'Firefox': '51',
-	'Opera': '53',
-	'Safari': '54'
-}
-*/
-
 export const Browsers: BrowsersMap = {
-	ubuntu: (browser) => ['Ubuntu', browser, '24.04.1'],
+	ubuntu: (browser) => ['Ubuntu', browser, '22.04.4'],
 	macOS: (browser) => ['Mac OS', browser, '14.4.1'],
-	baileys: (browser) => ['Baileys', browser, '6.7.9'],
+	baileys: (browser) => ['Baileys', browser, '6.5.0'],
 	windows: (browser) => ['Windows', browser, '10.0.22631'],
-	// iOS: (browser) => ['iOS', browser, '18.1'],
 	/** The appropriate browser based on your OS & release */
 	appropriate: (browser) => [ PLATFORM_MAP[platform()] || 'Ubuntu', browser, release() ]
 }
 
-/** Other Browser Support for Paircode */
 export const getPlatformId = (browser: string) => {
 	const platformType = proto.DeviceProps.PlatformType[browser.toUpperCase()]
-	return platformType ? platformType.toString() : '51' // Firefox
+	return platformType ? platformType.toString().charCodeAt(0).toString() : '49' //chrome
 }
 
 export const BufferJSON = {
@@ -101,10 +88,6 @@ export const encodeWAMessage = (message: proto.IMessage) => (
 	writeRandomPadMax16(
 		proto.Message.encode(message).finish()
 	)
-)
-
-export const encodeNewsletterMessage = (message: proto.IMessage) => (
-	proto.Message.encode(message).finish()
 )
 
 export const generateRegistrationId = (): number => {
@@ -198,8 +181,8 @@ export async function promiseTimeout<T>(ms: number | undefined, promise: (resolv
 	return p as Promise<T>
 }
 
-//Useless but still keep this to avoid unexpected errors and bugs 
-
+// inspired from whatsmeow code
+// https://github.com/tulir/whatsmeow/blob/64bc969fbe78d31ae0dd443b8d4c80a5d026d07a/send.go#L42
 export const generateMessageIDV2 = (userId?: string): string => {
 	const data = Buffer.alloc(8 + 20 + 16)
 	data.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 1000)))
@@ -216,28 +199,14 @@ export const generateMessageIDV2 = (userId?: string): string => {
 	random.copy(data, 28)
 
 	const hash = createHash('sha256').update(data).digest()
-	return 'ANYAWEB' + hash.toString('hex').toUpperCase().substring(0, 18)
+	return '3EB0' + hash.toString('hex').toUpperCase().substring(0, 18)
 }
-
-
-//Message ID function for Anya_Baileyz
- 
-//This V3 is RollBack Update Of Old Message ID
-
-export const generateMessageIDV3 = (userId?: string): string => {
-   let swebfix = 'ANYAWEB';
-     let swebRandom = randomBytes(5).toString('hex').toUpperCase().substring(0, 10);
-        return swebfix + swebRandom;
-}
-
-
-
 
 // generate a random ID to attach to a message
-export const generateMessageID = () => 'ANYAWEB' + randomBytes(10).toString('hex').toUpperCase()
+export const generateMessageID = () => '3EB0' + randomBytes(18).toString('hex').toUpperCase()
 
 export function bindWaitForEvent<T extends keyof BaileysEventMap>(ev: BaileysEventEmitter, event: T) {
-	return async(check: (u: BaileysEventMap[T]) => Promise<boolean | undefined>, timeoutMs?: number) => {
+	return async(check: (u: BaileysEventMap[T]) => boolean | undefined, timeoutMs?: number) => {
 		let listener: (item: BaileysEventMap[T]) => void
 		let closeListener: (state: Partial<ConnectionState>) => void
 		await (
@@ -254,8 +223,8 @@ export function bindWaitForEvent<T extends keyof BaileysEventMap>(ev: BaileysEve
 					}
 
 					ev.on('connection.update', closeListener)
-					listener = async(update) => {
-						if(await check(update)) {
+					listener = (update) => {
+						if(check(update)) {
 							resolve()
 						}
 					}
@@ -273,42 +242,24 @@ export function bindWaitForEvent<T extends keyof BaileysEventMap>(ev: BaileysEve
 
 export const bindWaitForConnectionUpdate = (ev: BaileysEventEmitter) => bindWaitForEvent(ev, 'connection.update')
 
-/**
- * utility that fetches latest baileys version from the main branch.
- * Use to ensure your WA connection is always on the latest version
- */
- export const fetchLatestBaileysVersion = async(options: AxiosRequestConfig<any> = { }) => {
-	try {
-		const result = await axios.get(
-			'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/versions.json',
-			{
-				...options,
-				responseType: 'json'
-			}
-		)
-		
-		const version = result.data.versions[result.data.versions.length - 1].version.split('.')
-		const version2 = version[2].replace('-alpha', '');
-		return {
-			version: [+version[0], +version[1], +version2],
-			isLatest: true
+export const printQRIfNecessaryListener = (ev: BaileysEventEmitter, logger: Logger) => {
+	ev.on('connection.update', async({ qr }) => {
+		if(qr) {
+			const QR = await import('qrcode-terminal')
+				.then(m => m.default || m)
+				.catch(() => {
+					logger.error('QR code terminal not added as dependency')
+				})
+			QR?.generate(qr, { small: true })
 		}
-	} catch(error) {
-		return {
-			version: baileysVersion as WAVersion,
-			isLatest: false,
-			error
-		}
-	}
+	})
 }
 
 /**
  * utility that fetches latest baileys version from the master branch.
  * Use to ensure your WA connection is always on the latest version
  */
- 
-export const fetchLatestBaileysVersion2 = async(options: AxiosRequestConfig<any> = { }) => {
-  
+export const fetchLatestBaileysVersion = async(options: AxiosRequestConfig<{}> = { }) => {
 	const URL = 'https://raw.githubusercontent.com/WhiskeySockets/Baileys/master/src/Defaults/baileys-version.json'
 	try {
 		const result = await axios.get<{ version: WAVersion }>(
@@ -337,31 +288,16 @@ export const fetchLatestBaileysVersion2 = async(options: AxiosRequestConfig<any>
  */
 export const fetchLatestWaWebVersion = async(options: AxiosRequestConfig<{}>) => {
 	try {
-		const { data } = await axios.get(
-			'https://web.whatsapp.com/sw.js',
+		const result = await axios.get(
+			'https://web.whatsapp.com/check-update?version=1&platform=web',
 			{
 				...options,
 				responseType: 'json'
 			}
 		)
-
-		const regex = /\\?"client_revision\\?":\s*(\d+)/
-		const match = data.match(regex)
-
-		if(!match?.[1]) {
-			return {
-				version: baileysVersion as WAVersion,
-				isLatest: false,
-				error: {
-					message: 'Could not find client revision in the fetched content'
-				}
-			}
-		}
-
-		const clientRevision = match[1]
-
+		const version = result.data.currentVersion.split('.')
 		return {
-			version: [2, 3000, +clientRevision] as WAVersion,
+			version: [+version[0], +version[1], +version[2]] as WAVersion,
 			isLatest: true
 		}
 	} catch(error) {
@@ -380,7 +316,6 @@ export const generateMdTagPrefix = () => {
 }
 
 const STATUS_MAP: { [_: string]: proto.WebMessageInfo.Status } = {
-	'sender': proto.WebMessageInfo.Status.SERVER_ACK,
 	'played': proto.WebMessageInfo.Status.PLAYED,
 	'read': proto.WebMessageInfo.Status.READ,
 	'read-self': proto.WebMessageInfo.Status.READ

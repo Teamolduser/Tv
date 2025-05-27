@@ -82,7 +82,7 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 		...sock,
 		groupMetadata,
 		groupCreate: async(subject: string, participants: string[]) => {
-			const key = generateMessageIDV2()
+			const key = generateMessageID()
 			const result = await groupQuery(
 				'@g.us',
 				'set',
@@ -207,7 +207,7 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 					{
 						tag: 'description',
 						attrs: {
-							...(description ? { id: generateMessageIDV2() } : { delete: 'true' }),
+							...(description ? { id: generateMessageID() } : { delete: 'true' }),
 							...(prev ? { prev } : {})
 						},
 						content: description ? [
@@ -232,7 +232,7 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 			const result = getBinaryNodeChild(results, 'group')
 			return result?.attrs.jid
 		},
-		
+
 		/**
 		 * revoke a v4 invite for someone
 		 * @param groupJid group jid
@@ -243,7 +243,7 @@ export const makeGroupsSocket = (config: SocketConfig) => {
 			const result = await groupQuery(groupJid, 'set', [{ tag: 'revoke', attrs: {}, content: [{ tag: 'participant', attrs: { jid: invitedJid } }] }])
 			return !!result
 		},
-		
+
 		/**
 		 * accept a GroupInviteMessage
 		 * @param key the key of the invite message, or optionally only provide the jid of the person who sent the invite
@@ -339,7 +339,6 @@ export const extractGroupMetadata = (result: BinaryNode) => {
 	const memberAddMode = getBinaryNodeChildString(group, 'member_add_mode') === 'all_member_add'
 	const metadata: GroupMetadata = {
 		id: groupId,
-		addressingMode: group.attrs.addressing_mode as "pn" | "lid",
 		subject: group.attrs.subject,
 		subjectOwner: group.attrs.s_o,
 		subjectTime: +group.attrs.s_t,

@@ -1,4 +1,5 @@
 import { AxiosRequestConfig } from 'axios'
+import type { Logger } from 'pino'
 import type { Readable } from 'stream'
 import type { URL } from 'url'
 import { proto } from '../../WAProto'
@@ -13,14 +14,15 @@ export type WAMessage = proto.IWebMessageInfo
 export type WAMessageContent = proto.IMessage
 export type WAContactMessage = proto.Message.IContactMessage
 export type WAContactsArrayMessage = proto.Message.IContactsArrayMessage
-export type WAMessageKey = proto.IMessageKey & {server_id?: string}
+export type WAMessageKey = proto.IMessageKey
 export type WATextMessage = proto.Message.IExtendedTextMessage
 export type WAContextInfo = proto.IContextInfo
 export type WALocationMessage = proto.Message.ILocationMessage
 export type WAGenericMediaMessage = proto.Message.IVideoMessage | proto.Message.IImageMessage | proto.Message.IAudioMessage | proto.Message.IDocumentMessage | proto.Message.IStickerMessage
-export const WAMessageStubType = proto.WebMessageInfo.StubType
-export const WAMessageStatus = proto.WebMessageInfo.Status
-import { ILogger } from '../Utils/logger'
+// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+export import WAMessageStubType = proto.WebMessageInfo.StubType
+// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+export import WAMessageStatus = proto.WebMessageInfo.Status
 export type WAMediaPayloadURL = { url: URL | string }
 export type WAMediaPayloadStream = { stream: Readable }
 export type WAMediaUpload = Buffer | WAMediaPayloadStream | WAMediaPayloadURL
@@ -176,9 +178,6 @@ export type AnyRegularMessageContent = (
         time?: 86400 | 604800 | 2592000
     }
     | {
-        unpin: WAMessageKey
-    }
-    | {
         product: WASendableProduct
         businessOwnerJid?: string
         body?: string
@@ -235,14 +234,14 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
     /** if it is broadcast */
     broadcast?: boolean
 }
-
 export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
 	userJid: string
 }
 
-export type WAMediaUploadFunction = (readStream: Readable, opts: { fileEncSha256B64: string, mediaType: MediaType, newsletter?: boolean, timeoutMs?: number }) => Promise<{ mediaUrl: string, directPath: string }>
+export type WAMediaUploadFunction = (readStream: Readable, opts: { fileEncSha256B64: string, mediaType: MediaType, timeoutMs?: number }) => Promise<{ mediaUrl: string, directPath: string }>
+
 export type MediaGenerationOptions = {
-	logger?: ILogger
+	logger?: Logger
     mediaTypeOverride?: MediaType
     upload: WAMediaUploadFunction
     /** cache media so it does not have to be uploaded again */
@@ -253,18 +252,13 @@ export type MediaGenerationOptions = {
     options?: AxiosRequestConfig
 
     backgroundColor?: string
-    
-    /** The message is for newsletter? */
-    newsletter?: boolean
 
     font?: number
 }
-
 export type MessageContentGenerationOptions = MediaGenerationOptions & {
 	getUrlInfo?: (text: string) => Promise<WAUrlInfo | undefined>
     getProfilePicUrl?: (jid: string, type: 'image' | 'preview') => Promise<string | undefined>
 }
-
 export type MessageGenerationOptions = MessageContentGenerationOptions & MessageGenerationOptionsFromContent
 
 /**

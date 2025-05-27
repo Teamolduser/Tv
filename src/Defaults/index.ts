@@ -12,9 +12,7 @@ export const DEF_CALLBACK_PREFIX = 'CB:'
 export const DEF_TAG_PREFIX = 'TAG:'
 export const PHONE_CONNECTION_CB = 'CB:Pong'
 
-// export const WA_DEFAULT_EPHEMERAL = 7 * 24 * 60 * 60
-
-export const WA_DEFAULT_EPHEMERAL = 24 * 60 * 60
+export const WA_DEFAULT_EPHEMERAL = 7 * 24 * 60 * 60
 
 export const NOISE_MODE = 'Noise_XX_25519_AESGCM_SHA256\0\0\0\0'
 export const DICT_VERSION = 2
@@ -23,7 +21,7 @@ export const NOISE_WA_HEADER = Buffer.from(
 	[ 87, 65, 6, DICT_VERSION ]
 ) // last is "DICT_VERSION"
 /** from: https://stackoverflow.com/questions/3809401/what-is-a-good-regular-expression-to-match-a-url */
-export const URL_REGEX = /https:\/\/(?![^:@\/\s]+:[^:@\/\s]+@)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(:\d+)?(\/[^\s]*)?/g
+export const URL_REGEX = /(http(s)?:\/\/.)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/
 
 export const WA_CERT_DETAILS = {
 	SERIAL: 0,
@@ -39,18 +37,18 @@ export const PROCESSABLE_HISTORY_TYPES = [
 
 export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	version: version as WAVersion,
-	browser: Browsers.ubuntu('Firefox'),
+	browser: Browsers.ubuntu('Chrome'),
 	waWebSocketUrl: 'wss://web.whatsapp.com/ws/chat',
 	connectTimeoutMs: 20_000,
 	keepAliveIntervalMs: 30_000,
 	logger: logger.child({ class: 'baileys' }),
+	printQRInTerminal: false,
 	emitOwnEvents: true,
-	defaultQueryTimeoutMs: undefined,
+	defaultQueryTimeoutMs: 60_000,
 	customUploadHosts: [],
 	retryRequestDelayMs: 250,
 	maxMsgRetryCount: 5,
 	fireInitQueries: true,
-	ignoreMsgLoading: false,
 	auth: undefined as unknown as AuthenticationState,
 	markOnlineOnConnect: true,
 	syncFullHistory: false,
@@ -59,13 +57,12 @@ export const DEFAULT_CONNECTION_CONFIG: SocketConfig = {
 	shouldIgnoreJid: () => false,
 	linkPreviewImageThumbnailWidth: 192,
 	transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
-	generateHighQualityLinkPreview: true,
+	generateHighQualityLinkPreview: false,
 	options: { },
 	appStateMacVerification: {
 		patch: false,
 		snapshot: false,
 	},
-	countryCode: 'US',
 	getMessage: async() => undefined,
 	cachedGroupMetadata: async() => undefined,
 	makeSignalRepository: makeLibSignalRepository

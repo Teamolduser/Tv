@@ -2,6 +2,7 @@ import { Boom } from '@hapi/boom'
 import axios from 'axios'
 import { randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
+import { Logger } from 'pino'
 import { type Transform } from 'stream'
 import { proto } from '../../WAProto'
 import { MEDIA_KEYS, URL_REGEX, WA_DEFAULT_EPHEMERAL } from '../Defaults'
@@ -23,11 +24,10 @@ import {
 	WAProto,
 	WATextMessage,
 } from '../Types'
-import { isJidGroup, isJidNewsletter, isJidStatusBroadcast, jidNormalizedUser } from '../WABinary'
+import { isJidGroup, isJidStatusBroadcast, jidNormalizedUser } from '../WABinary'
 import { sha256 } from './crypto'
 import { generateMessageID, getKeyAuthor, unixTimestampSeconds } from './generics'
-import { ILogger } from './logger'
-import { downloadContentFromMessage, encryptedStream, generateThumbnail, getAudioDuration, getAudioWaveform, MediaDownloadOptions, prepareStream } from './messages-media'
+import { downloadContentFromMessage, encryptedStream, generateThumbnail, getAudioDuration, getAudioWaveform, MediaDownloadOptions } from './messages-media'
 
 type MediaUploadData = {
 	media: WAMediaUpload
@@ -163,8 +163,8 @@ export const prepareWAMessageMedia = async(
 		fileEncSha256,
 		fileSha256,
 		fileLength,
-		didSaveToTmpPath,
-	} = await (options.newsletter ? prepareStream : encryptedStream)(
+		didSaveToTmpPath
+	} = await encryptedStream(
 		uploadData.media,
 		options.mediaTypeOverride || mediaType,
 		{
@@ -174,8 +174,8 @@ export const prepareWAMessageMedia = async(
 		}
 	)
 	 // url safe Base64 encode the SHA256 hash of the body
-	const fileEncSha256B64 = (options.newsletter ? fileSha256 : fileEncSha256 ?? fileSha256).toString('base64')
-	const [{ mediaUrl, directPath, handle }] = await Promise.all([
+	const fileEncSha256B64 = fileEncSha256.toString('base64')
+	const [{ mediaUrl, directPath }] = await Promise.all([
 		(async() => {
 			const result = await options.upload(
 				encWriteStream,
@@ -211,6 +211,11 @@ export const prepareWAMessageMedia = async(
 					logger?.debug('processed waveform')
 				}
 
+				if(requiresWaveformProcessing) {
+					uploadData.waveform = await getAudioWaveform(bodyPath!, logger)
+					logger?.debug('processed waveform')
+				}
+
 				if(requiresAudioBackground) {
 					uploadData.backgroundArgb = await assertColor(options.backgroundColor)
 					logger?.debug('computed backgroundColor audio status')
@@ -222,18 +227,11 @@ export const prepareWAMessageMedia = async(
 	])
 		.finally(
 			async() => {
-				if (!Buffer.isBuffer(encWriteStream)) {
-					encWriteStream.destroy()
-				}
+				encWriteStream.destroy()
 				// remove tmp files
 				if(didSaveToTmpPath && bodyPath) {
-					try {
-						await fs.access(bodyPath)
-						await fs.unlink(bodyPath)
-						logger?.debug('removed tmp file')
-					} catch(error) {
-						logger?.warn('failed to remove tmp file')
-					}
+					await fs.unlink(bodyPath)
+					logger?.debug('removed tmp files')
 				}
 			}
 		)
@@ -241,13 +239,13 @@ export const prepareWAMessageMedia = async(
 	const obj = WAProto.Message.fromObject({
 		[`${mediaType}Message`]: MessageTypeProto[mediaType].fromObject(
 			{
-				url: handle ? undefined : mediaUrl,
+				url: mediaUrl,
 				directPath,
-				mediaKey: mediaKey,
-				fileEncSha256: fileEncSha256,
+				mediaKey,
+				fileEncSha256,
 				fileSha256,
 				fileLength,
-				mediaKeyTimestamp: handle ? undefined : unixTimestampSeconds(),
+				mediaKeyTimestamp: unixTimestampSeconds(),
 				...uploadData,
 				media: undefined
 			}
@@ -334,6 +332,7 @@ export const generateWAMessageContent = async(
 		}
 
 		if(urlInfo) {
+			extContent.canonicalUrl = urlInfo['canonical-url']
 			extContent.matchedText = urlInfo['matched-text']
 			extContent.jpegThumbnail = urlInfo.jpegThumbnail
 			extContent.description = urlInfo.description
@@ -419,20 +418,11 @@ export const generateWAMessageContent = async(
 		m.messageContextInfo = {}
 
 		m.pinInChatMessage.key = message.pin
-		m.pinInChatMessage.type = 1
+		m.pinInChatMessage.type = message.type
 		m.pinInChatMessage.senderTimestampMs = Date.now()
 
-		m.messageContextInfo.messageAddOnDurationInSecs = message.time || 86400
-	} else if('unpin' in message){
-		m.pinInChatMessage = {}
-		m.messageContextInfo = {}
-
-		m.pinInChatMessage.key = message.unpin
-		m.pinInChatMessage.type = 2
-		m.pinInChatMessage.senderTimestampMs = Date.now()
-
-		m.messageContextInfo.messageAddOnDurationInSecs = 0
-	}  else if('buttonReply' in message) {
+		m.messageContextInfo.messageAddOnDurationInSecs = message.type === 1 ? message.time || 86400 : 0
+	} else if('buttonReply' in message) {
 		switch (message.type) {
 		case 'template':
 			m.templateButtonReplyMessage = {
@@ -569,8 +559,7 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
-	// only set quoted if isn't a newsletter message
-	if(quoted && !isJidNewsletter(jid)) {
+	if(quoted) {
 		const participant = quoted.key.fromMe ? userJid : (quoted.participant || quoted.key.participant || quoted.key.remoteJid)
 
 		let quotedMsg = normalizeMessageContent(quoted.message)!
@@ -603,9 +592,7 @@ export const generateWAMessageFromContent = (
 		// and it's not a protocol message -- delete, toggle disappear message
 		key !== 'protocolMessage' &&
 		// already not converted to disappearing message
-		key !== 'ephemeralMessage' &&
-		// newsletter not accept disappearing messages
-		!isJidNewsletter(jid)
+		key !== 'ephemeralMessage'
 	) {
 		innerMessage[key].contextInfo = {
 			...(innerMessage[key].contextInfo || {}),
@@ -620,7 +607,7 @@ export const generateWAMessageFromContent = (
 		key: {
 			remoteJid: jid,
 			fromMe: true,
-			id: options?.messageId || generateMessageIDV2(),
+			id: options?.messageId || generateMessageID(),
 		},
 		message: message,
 		messageTimestamp: timestamp,
@@ -642,7 +629,7 @@ export const generateWAMessage = async(
 		jid,
 		await generateWAMessageContent(
 			content,
-			{ newsletter: isJidNewsletter(jid!), ...options }
+			options
 		),
 		options
 	)
@@ -740,11 +727,7 @@ export const extractMessageContent = (content: WAMessageContent | undefined | nu
 /**
  * Returns the device predicted by message ID
  */
-export const getDevice = (id: string) => /^3A.{18}$/.test(id) ? 'ios' :
-	/^3E.{20}$/.test(id) ? 'web' :
-		/^(.{21}|.{32})$/.test(id) ? 'android' :
-			/^(3F|.{18}$)/.test(id) ? 'desktop' :
-				'unknown'
+export const getDevice = (id: string) => /^3A.{18}$/.test(id) ? 'ios' : /^3E.{20}$/.test(id) ? 'web' : /^(.{21}|.{32})$/.test(id) ? 'android' : /^.{18}$/.test(id) ? 'desktop' : 'unknown'
 
 /** Upserts a receipt in the message */
 export const updateMessageWithReceipt = (msg: Pick<WAMessage, 'userReceipt'>, receipt: MessageUserReceipt) => {
@@ -860,7 +843,7 @@ export const aggregateMessageKeysNotFromMe = (keys: proto.IMessageKey[]) => {
 
 type DownloadMediaMessageContext = {
 	reuploadRequest: (msg: WAMessage) => Promise<WAMessage>
-	logger: ILogger
+	logger: Logger
 }
 
 const REUPLOAD_REQUIRED_STATUS = [410, 404]
