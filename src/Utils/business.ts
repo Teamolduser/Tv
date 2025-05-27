@@ -251,7 +251,7 @@ export const uploadingNecessaryImages = async(
 				const sha = hasher.digest('base64')
 
 				const { directPath } = await waUploadToServer(
-					toReadable(Buffer.concat(contentBlocks)),
+					toReadable(Buffer.concat(encFileWriteStream)),
 					{
 						mediaType: 'product-catalog-image',
 						fileEncSha256B64: sha,
