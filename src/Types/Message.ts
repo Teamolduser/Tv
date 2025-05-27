@@ -240,7 +240,7 @@ export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions &
 	userJid: string
 }
 
-export type WAMediaUploadFunction = (encFilePath: string, opts: { fileEncSha256B64: string, mediaType: MediaType, newsletter?: boole
+export type WAMediaUploadFunction = (encFilePath: string, opts: { fileEncSha256B64: string, mediaType: MediaType, newsletter?: boolean, timeoutMs?: number })
 
 export type MediaGenerationOptions = {
 	logger?: ILogger
