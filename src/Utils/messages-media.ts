@@ -420,7 +420,7 @@ export const prepareStream = async(
 		if(type === 'file') {
 			bodyPath = (media as any).url
 		} else if(saveOriginalFileIfRequired) {
-			bodyPath = join(getTmpFilesDirectory(), mediaType + generateMessageID())
+			bodyPath = join(getTmpFilesDirectory(), mediaType + generateMessageIDV2())
 			writeFileSync(bodyPath, buffer)
 			didSaveToTmpPath = true
 		}
