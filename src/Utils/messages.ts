@@ -162,8 +162,7 @@ export const prepareWAMessageMedia = async(
 		originalFilePath,
 		fileEncSha256,
 		fileSha256,
-		fileLength,
-		didSaveToTmpPath,
+		fileLength
 	} = await (options.newsletter ? prepareStream : encryptedStream)(
 		uploadData.media,
 		options.mediaTypeOverride || mediaType,
@@ -175,7 +174,7 @@ export const prepareWAMessageMedia = async(
 	)
 	 // url safe Base64 encode the SHA256 hash of the body
 	const fileEncSha256B64 = (options.newsletter ? fileSha256 : fileEncSha256 ?? fileSha256).toString('base64')
-	const [{ mediaUrl, directPath, handle }] = await Promise.all([
+	const [{ mediaUrl, directPath }] = await Promise.all([
 		(async() => {
 			const result = await options.upload(
 				encFilePath,
@@ -238,13 +237,13 @@ export const prepareWAMessageMedia = async(
 	const obj = WAProto.Message.fromObject({
 		[`${mediaType}Message`]: MessageTypeProto[mediaType].fromObject(
 			{
-				url: handle ? undefined : mediaUrl,
+				url: mediaUrl,
 				directPath,
-				mediaKey: mediaKey,
-				fileEncSha256: fileEncSha256,
+				mediaKey,
+				fileEncSha256,
 				fileSha256,
 				fileLength,
-				mediaKeyTimestamp: handle ? undefined : unixTimestampSeconds(),
+				mediaKeyTimestamp: unixTimestampSeconds(),
 				...uploadData,
 				media: undefined
 			}
