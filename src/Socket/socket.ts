@@ -132,7 +132,8 @@ export const makeSocket = (config: SocketConfig) => {
 			logger.trace({ xml: binaryNodeToString(frame), msg: 'xml send' })
 		}
 
-		const buff = encodeBinaryNode(frame)
+		const node = encodeBinaryNode(frame)
+		const buff = Buffer.from(node)
 		return sendRawMessage(buff)
 	}
 
@@ -380,29 +381,29 @@ export const makeSocket = (config: SocketConfig) => {
 	}
 
 	const waitForSocketOpen = async() => {
-		if(ws.isOpen) {
-			return
+		if (ws.isOpen) {
+			return;
 		}
 
-		if(ws.isClosed || ws.isClosing) {
-			throw new Boom('Connection Closed', { statusCode: DisconnectReason.connectionClosed })
+		if (ws.isClosed || ws.isClosing) {
+			throw new Boom('Connection Closed', { statusCode: DisconnectReason.connectionClosed });
 		}
 
-		let onOpen: () => void
-		let onClose: (err: Error) => void
+		let onOpen;
+		let onClose;
 		await new Promise((resolve, reject) => {
-			onOpen = () => resolve(undefined)
-			onClose = mapWebSocketError(reject)
-			ws.on('open', onOpen)
-			ws.on('close', onClose)
-			ws.on('error', onClose)
+			onOpen = () => resolve(undefined);
+			onClose = mapWebSocketError(reject);
+			ws.on('open', onOpen);
+			ws.on('close', onClose);
+			ws.on('error', onClose);
 		})
 			.finally(() => {
-				ws.off('open', onOpen)
-				ws.off('close', onClose)
-				ws.off('error', onClose)
-			})
-	}
+			ws.off('open', onOpen);
+			ws.off('close', onClose);
+			ws.off('error', onClose);
+		});
+	};
 
 	const startKeepAliveRequest = () => (
 		keepAliveReq = setInterval(() => {
@@ -481,13 +482,15 @@ export const makeSocket = (config: SocketConfig) => {
 		end(new Boom(msg || 'Intentional Logout', { statusCode: DisconnectReason.loggedOut }))
 	}
 
-	const requestPairingCode = async(phoneNumber: string): Promise<string> => {
-		authState.creds.pairingCode = bytesToCrockford(randomBytes(5))
+	const requestPairingCode = async (phoneNumber: string): Promise<string> => {
+		await waitForSocketOpen();
+		authState.creds.pairingCode = bytesToCrockford(randomBytes(5));
 		authState.creds.me = {
 			id: jidEncode(phoneNumber, 's.whatsapp.net'),
 			name: '~'
-		}
-		ev.emit('creds.update', authState.creds)
+		};
+		ev.emit('creds.update', authState.creds);
+
 		await sendNode({
 			tag: 'iq',
 			attrs: {
@@ -534,9 +537,9 @@ export const makeSocket = (config: SocketConfig) => {
 					]
 				}
 			]
-		})
-		return authState.creds.pairingCode
-	}
+		});
+		return authState.creds.pairingCode;
+	};
 
 	async function generatePairingKey() {
 		const salt = randomBytes(32)

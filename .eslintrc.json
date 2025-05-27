@@ -1,5 +1,5 @@
 {
-    "extends": "@whiskeysockets",
+    "extends": "@queenanya",
     "parserOptions": {
         "sourceType": "module",
         "project": "./tsconfig.json"
