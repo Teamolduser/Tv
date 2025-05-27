@@ -3,7 +3,7 @@ import axios, { AxiosRequestConfig } from 'axios'
 import { exec } from 'child_process'
 import * as Crypto from 'crypto'
 import { once } from 'events'
-import { createReadStream, createWriteStream, promises as fs, WriteStream } from 'fs'
+import { createReadStream, createWriteStream, promises as fs, writeFileSync, WriteStream } from 'fs'
 import type { IAudioMetadata } from 'music-metadata'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -443,13 +443,10 @@ export const prepareStream = async(
 		stream.destroy()
 
 		try {
-			await fs.unlink(encFilePath)
-			if(originalFilePath) {
-				await fs.unlink(originalFilePath)
+				await fs.unlink(bodyPath!)
+			} catch(err) {
+				logger?.error({ err }, 'failed to save to tmp path')
 			}
-		} catch(err) {
-			logger?.error({ err }, 'failed deleting tmp files')
-		}
 
 		throw error
 	}
