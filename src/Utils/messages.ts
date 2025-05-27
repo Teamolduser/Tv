@@ -27,7 +27,7 @@ import { isJidGroup, isJidNewsletter, isJidStatusBroadcast, jidNormalizedUser } 
 import { sha256 } from './crypto'
 import { generateMessageIDV2, getKeyAuthor, unixTimestampSeconds } from './generics'
 import { ILogger } from './logger'
-import { downloadContentFromMessage, encryptedStream, generateThumbnail, getAudioDuration, getAudioWaveform, MediaDownloadOptions } from './messages-media'
+import { downloadContentFromMessage, encryptedStream, generateThumbnail, getAudioDuration, getAudioWaveform, MediaDownloadOptions, prepareStream } from './messages-media'
 
 type MediaUploadData = {
 	media: WAMediaUpload
