@@ -4,26 +4,22 @@
   "description": "WhatsApp API",
   "keywords": [
     "whatsapp",
-    "js-whatsapp",
-    "whatsapp-api",
-    "whatsapp-web",
-    "whatsapp-chat",
-    "whatsapp-group",
-    "automation",
-    "multi-device"
+    "automation"
   ],
   "homepage": "https://github.com/QueenAnya/Baileys",
   "repository": {
     "url": "git@github.com:QueenAnya/Baileys.git"
   },
   "license": "MIT",
-  "author": "Adhiraj Singh",
+  "author": "Rajeh Taher",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
     "lib/*",
-    "WAProto/*",
-    "WASignalGroup/*.js"
+    "WAProto/*.ts",
+    "WAProto/*.js",
+    "WASignalGroup/*.js",
+    "engine-requirements.js"
   ],
   "scripts": {
     "build:all": "tsc && typedoc",
@@ -38,6 +34,7 @@
     "lint:fix": "yarn lint --fix",
     "prepack": "tsc",
     "prepare": "tsc",
+    "preinstall": "node ./engine-requirements.js",
     "release": "release-it",
     "test": "jest"
   },
@@ -83,20 +80,14 @@
     "typedoc": "^0.24.7",
     "typescript": "^4.6.4"
   },
-  "peerDependencies": {
-    "jimp": "^0.22.12",
-    "link-preview-js": "^3.0.0",
-    "qrcode-terminal": "^0.12.0",
-    "sharp": "^0.32.6"
-  },
   "peerDependenciesMeta": {
+    "audio-decode": {
+      "optional": true
+    },
     "jimp": {
       "optional": true
     },
     "link-preview-js": {
-      "optional": true
-    },
-    "qrcode-terminal": {
       "optional": true
     },
     "sharp": {
