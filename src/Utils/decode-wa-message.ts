@@ -3,7 +3,7 @@ import { proto } from '../../WAProto'
 import { SignalRepository, WAMessageKey } from '../Types'
 import { areJidsSameUser, BinaryNode, getBinaryNodeChild, isJidBroadcast, isJidGroup, isJidMetaIa, isJidNewsletter, isJidStatusBroadcast, isJidUser, isLidUser } from '../WABinary'
 import { BufferJSON, unpadRandomMax16 } from './generics'
-import { ILogger } from './logger
+import { ILogger } from './logger'
 
 export const NO_MESSAGE_FOUND_ERROR_TEXT = 'Message absent from node'
 export const MISSING_KEYS_ERROR_TEXT = 'Key used already or never filled'
