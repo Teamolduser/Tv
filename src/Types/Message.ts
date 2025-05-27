@@ -13,7 +13,7 @@ export type WAMessage = proto.IWebMessageInfo
 export type WAMessageContent = proto.IMessage
 export type WAContactMessage = proto.Message.IContactMessage
 export type WAContactsArrayMessage = proto.Message.IContactsArrayMessage
-export type WAMessageKey = proto.IMessageKey
+export type WAMessageKey = proto.IMessageKey & {server_id?: string}
 export type WATextMessage = proto.Message.IExtendedTextMessage
 export type WAContextInfo = proto.IContextInfo
 export type WALocationMessage = proto.Message.ILocationMessage
@@ -176,6 +176,9 @@ export type AnyRegularMessageContent = (
         time?: 86400 | 604800 | 2592000
     }
     | {
+        unpin: WAMessageKey
+    }
+    | {
         product: WASendableProduct
         businessOwnerJid?: string
         body?: string
@@ -232,11 +235,12 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
     /** if it is broadcast */
     broadcast?: boolean
 }
+
 export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
 	userJid: string
 }
 
-export type WAMediaUploadFunction = (encFilePath: string, opts: { fileEncSha256B64: string, mediaType: MediaType, timeoutMs?: number }) => Promise<{ mediaUrl: string, directPath: string }>
+export type WAMediaUploadFunction = (encFilePath: string, opts: { fileEncSha256B64: string, mediaType: MediaType, newsletter?: boole
 
 export type MediaGenerationOptions = {
 	logger?: ILogger
@@ -250,13 +254,18 @@ export type MediaGenerationOptions = {
     options?: AxiosRequestConfig
 
     backgroundColor?: string
+    
+    /** The message is for newsletter? */
+    newsletter?: boolean
 
     font?: number
 }
+
 export type MessageContentGenerationOptions = MediaGenerationOptions & {
 	getUrlInfo?: (text: string) => Promise<WAUrlInfo | undefined>
     getProfilePicUrl?: (jid: string, type: 'image' | 'preview') => Promise<string | undefined>
 }
+
 export type MessageGenerationOptions = MessageContentGenerationOptions & MessageGenerationOptionsFromContent
 
 /**
