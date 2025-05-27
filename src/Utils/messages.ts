@@ -23,7 +23,7 @@ import {
 	WAProto,
 	WATextMessage,
 } from '../Types'
-import { isJidGroup, isJidStatusBroadcast, jidNormalizedUser } from '../WABinary'
+import { isJidGroup, isJidNewsletter, isJidStatusBroadcast, jidNormalizedUser } from '../WABinary'
 import { sha256 } from './crypto'
 import { generateMessageIDV2, getKeyAuthor, unixTimestampSeconds } from './generics'
 import { ILogger } from './logger'
@@ -163,7 +163,7 @@ export const prepareWAMessageMedia = async(
 		fileEncSha256,
 		fileSha256,
 		fileLength
-	} = await encryptedStream(
+	} = await (options.newsletter ? prepareStream : encryptedStream)(
 		uploadData.media,
 		options.mediaTypeOverride || mediaType,
 		{
@@ -173,7 +173,8 @@ export const prepareWAMessageMedia = async(
 		}
 	)
 	 // url safe Base64 encode the SHA256 hash of the body
-	const fileEncSha256B64 = fileEncSha256.toString('base64')
+	// const fileEncSha256B64 = (options.newsletter ? fileSha256 : fileEncSha256 ?? fileSha256).toString('base64')
+	const fileEncSha256B64 = (options.newsletter ? fileSha256 : fileEncSha256).toString('base64')
 	const [{ mediaUrl, directPath }] = await Promise.all([
 		(async() => {
 			const result = await options.upload(
@@ -418,8 +419,17 @@ export const generateWAMessageContent = async(
 		m.pinInChatMessage.type = message.type
 		m.pinInChatMessage.senderTimestampMs = Date.now()
 
-		m.messageContextInfo.messageAddOnDurationInSecs = message.type === 1 ? message.time || 86400 : 0
-	} else if('buttonReply' in message) {
+		m.messageContextInfo.messageAddOnDurationInSecs = message.time || 86400
+	} else if('unpin' in message){
+		m.pinInChatMessage = {}
+		m.messageContextInfo = {}
+
+		m.pinInChatMessage.key = message.unpin
+		m.pinInChatMessage.type = 2
+		m.pinInChatMessage.senderTimestampMs = Date.now()
+
+		m.messageContextInfo.messageAddOnDurationInSecs = 0
+	}  else if('buttonReply' in message) {
 		switch (message.type) {
 		case 'template':
 			m.templateButtonReplyMessage = {
@@ -556,7 +566,8 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
-	if(quoted) {
+	// only set quoted if isn't a newsletter message
+	if(quoted && !isJidNewsletter(jid)) {
 		const participant = quoted.key.fromMe ? userJid : (quoted.participant || quoted.key.participant || quoted.key.remoteJid)
 
 		let quotedMsg = normalizeMessageContent(quoted.message)!
@@ -589,7 +600,9 @@ export const generateWAMessageFromContent = (
 		// and it's not a protocol message -- delete, toggle disappear message
 		key !== 'protocolMessage' &&
 		// already not converted to disappearing message
-		key !== 'ephemeralMessage'
+		key !== 'ephemeralMessage' &&
+		// newsletter not accept disappearing messages
+		!isJidNewsletter(jid)
 	) {
 		innerMessage[key].contextInfo = {
 			...(innerMessage[key].contextInfo || {}),
@@ -626,7 +639,7 @@ export const generateWAMessage = async(
 		jid,
 		await generateWAMessageContent(
 			content,
-			options
+			{ newsletter: isJidNewsletter(jid!), ...options }
 		),
 		options
 	)
